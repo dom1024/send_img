@@ -1,0 +1,38 @@
+# config.yaml
+
+# 无人值守全局配置
+general:
+  watch_dir: ./incoming              # 顶级监听目录
+  recursive: true                    # 是否递归子目录
+  processed_base: .processed_files   # 已处理记录文件前缀（每天生成一个新文件）
+  retry_count: 3
+  retry_delay: 2                     # 秒
+  stable_wait: 0.5                   # 文件稳定检测间隔（秒）
+  stable_checks: 6                   # 文件稳定检测次数
+  case_insensitive: false            # 是否大小写不敏感匹配
+  ignore_office_temp: true           # 忽略 ~$*.xlsx 等临时文件
+
+  # 可扩展参数中心
+  params:
+    dt:
+      type: date
+      spec: "T-1"
+      format: "%Y-%m-%d"
+    region:
+      type: string
+      value: "CN"
+
+# 规则列表：name 是文件名模板，使用 {param} 占位，支持 * 和 ?
+file_rules:
+  - name: "reportname_{dt}_{region}.png"
+    recipients:
+      - user_id: alice
+        channels: [email]
+
+  - name: "reportname_{dt}_{region}.xlsx"
+    # 规则级参数覆盖示例：
+    # params:
+    #   dt: "T-7"
+    recipients:
+      - user_id: bob
+        channels: [chat]
