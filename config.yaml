@@ -11,6 +11,7 @@ general:
   stable_checks: 6                   # 文件稳定检测次数
   case_insensitive: false            # 是否大小写不敏感匹配
   ignore_office_temp: true           # 忽略 ~$*.xlsx 等临时文件
+  retention_days: 30                 # 数据文件和处理日志保留天数
 
   # 可扩展参数中心
   params:
