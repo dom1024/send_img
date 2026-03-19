@@ -12,6 +12,19 @@ general:
   case_insensitive: false            # 是否大小写不敏感匹配
   ignore_office_temp: true           # 忽略 ~$*.xlsx 等临时文件
   retention_days: 30                 # 数据文件和处理日志保留天数
+  run_start: "06:00"                 # 每天开始处理的时间
+  run_stop: "23:59"                  # 每天停止处理并休眠的时间
+
+  delivery:
+    url: "https://example.com/send"  # 发送接口地址
+    apply_id: "your_apply_id"
+    sender: "your_sender"
+    salt: "your_salt"
+    receivers_type: "USER_ID"
+    domain_code: "AR1"
+    timeout: 30
+    title: "{filename}"
+    content: "请查收文件：{filename}"
 
   # 可扩展参数中心
   params:
@@ -29,6 +42,9 @@ file_rules:
     recipients:
       - user_id: alice
         channels: [email]
+        # receivers: alice
+        # title: "图片通知"
+        # content: "请查收 {filename}"
 
   - name: "reportname_{dt}_{region}.xlsx"
     # 规则级参数覆盖示例：

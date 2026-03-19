@@ -53,40 +53,13 @@ def compute_params(
     result: Dict[str, str] = {}
 
     for name, cfg in (general_params or {}).items():
-        typ = (cfg.get("type") if isinstance(cfg, dict) else None) or "string"
-
-        if typ == "date":
-            spec = cfg.get("spec", "T")
-            fmt = cfg.get("format", "%Y-%m-%d")
-            d = parse_date_spec(spec, today)
-            result[name] = d.strftime(fmt)
-        elif typ in ("int", "number"):
-            result[name] = str(cfg.get("value", 0))
-        else:
-            result[name] = str(cfg.get("value", ""))
+        base_cfg = cfg if isinstance(cfg, dict) else {}
+        result[name] = _resolve_param_value(today, base_cfg, base_cfg)
 
     for name, override in (rule_params or {}).items():
         base_cfg = (general_params or {}).get(name, {}) or {}
-        base_type = base_cfg.get("type", "string")
-
-        if isinstance(override, dict):
-            typ = override.get("type", base_type)
-            if typ == "date":
-                spec = override.get("spec", base_cfg.get("spec", "T"))
-                fmt = override.get("format", base_cfg.get("format", "%Y-%m-%d"))
-                d = parse_date_spec(spec, today)
-                result[name] = d.strftime(fmt)
-            elif typ in ("int", "number"):
-                result[name] = str(override.get("value", 0))
-            else:
-                result[name] = str(override.get("value", ""))
-        else:
-            if base_type == "date":
-                d = parse_date_spec(str(override), today)
-                fmt = base_cfg.get("format", "%Y-%m-%d")
-                result[name] = d.strftime(fmt)
-            else:
-                result[name] = str(override)
+        override_cfg = override if isinstance(override, dict) else {"value": override}
+        result[name] = _resolve_param_value(today, base_cfg, override_cfg)
 
     return result
 
@@ -115,6 +88,21 @@ def render_name_template(template: str, params: Dict[str, str]) -> Optional[str]
 
 
 _regex_cache = {}
+
+
+def _resolve_param_value(today: date, base_cfg: Dict[str, Any], override_cfg: Dict[str, Any]) -> str:
+    typ = override_cfg.get("type", base_cfg.get("type", "string"))
+
+    if typ == "date":
+        raw_value = override_cfg.get("value")
+        spec = raw_value if raw_value is not None else override_cfg.get("spec", base_cfg.get("spec", "T"))
+        fmt = override_cfg.get("format", base_cfg.get("format", "%Y-%m-%d"))
+        return parse_date_spec(str(spec), today).strftime(fmt)
+
+    if typ in ("int", "number"):
+        return str(override_cfg.get("value", 0))
+
+    return str(override_cfg.get("value", ""))
 
 
 def name_to_regex(template: str, params: Dict[str, str], ignore_case: bool) -> Optional[re.Pattern]:

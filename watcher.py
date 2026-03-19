@@ -1,12 +1,8 @@
-import logging
+from send_img.logging_utils import setup_logging
+
+setup_logging()
 
 from send_img.app import main
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-)
 
 
 if __name__ == "__main__":

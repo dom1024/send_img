@@ -1,6 +1,8 @@
 import logging
 import os
 import time
+from datetime import datetime
+from typing import Optional
 
 from watchdog.events import FileSystemEventHandler
 
@@ -63,29 +65,83 @@ def handle_file_event(filepath: str, compiled_rules, store, general: dict, event
 
     retry_count = int(general.get("retry_count", 3))
     retry_delay = float(general.get("retry_delay", 2))
+    matched_rule = next((rule for rule, regex in compiled_rules if regex.match(filename)), None)
 
-    matched = False
-
-    for rule, regex in compiled_rules:
-        if regex.match(filename):
-            matched = True
-
-            for rec in rule.get("recipients", []):
-                uid = rec.get("user_id")
-                for ch in rec.get("channels", []):
-                    if ch not in ALLOWED_CHANNELS:
-                        logging.error(f"Unknown channel '{ch}' for user:{uid}; skipping")
-                        continue
-
-                    try_send_with_retries(abs_path, ch, uid, retry_count, retry_delay)
-
-            break
-
-    if matched:
-        store.mark(processed_key)
-        logging.info(f"Marked processed: {processed_key}")
+    if matched_rule:
+        if _send_to_recipients(abs_path, matched_rule, general, retry_count, retry_delay):
+            store.mark(processed_key)
+            logging.info(f"Marked processed: {processed_key}")
+        else:
+            logging.warning(f"Send incomplete, processed key not marked: {processed_key}")
     else:
         logging.debug(f"No matching rule for {filename}")
+
+
+def _send_to_recipients(
+    filepath: str,
+    rule: dict,
+    general: dict,
+    retry_count: int,
+    retry_delay: float,
+) -> bool:
+    attempted = False
+    all_succeeded = True
+
+    for recipient in rule.get("recipients", []):
+        user_id = recipient.get("user_id")
+        for channel in recipient.get("channels", []):
+            attempted = True
+            if channel not in ALLOWED_CHANNELS:
+                logging.error(f"Unknown channel '{channel}' for user:{user_id}; skipping")
+                all_succeeded = False
+                continue
+
+            if not try_send_with_retries(filepath, channel, recipient, general, retry_count, retry_delay):
+                all_succeeded = False
+
+    return attempted and all_succeeded
+
+
+def scan_existing_files(
+    watch_dir: str,
+    recursive: bool,
+    compiled_rules,
+    store,
+    general: dict,
+    modified_since: Optional[datetime] = None,
+) -> None:
+    if not os.path.exists(watch_dir):
+        return
+
+    if recursive:
+        path_iter = (
+            os.path.join(dirpath, name)
+            for dirpath, _, filenames in os.walk(watch_dir)
+            for name in filenames
+        )
+    else:
+        path_iter = (
+            os.path.join(watch_dir, name)
+            for name in os.listdir(watch_dir)
+            if os.path.isfile(os.path.join(watch_dir, name))
+        )
+
+    files_to_scan = []
+    cutoff = modified_since.timestamp() if modified_since else None
+
+    for path in path_iter:
+        try:
+            mtime = os.path.getmtime(path)
+        except OSError:
+            continue
+
+        if cutoff is not None and mtime < cutoff:
+            continue
+
+        files_to_scan.append((mtime, path))
+
+    for _, path in sorted(files_to_scan):
+        handle_file_event(path, compiled_rules, store, general, "scan")
 
 
 class FileHandler(FileSystemEventHandler):
@@ -94,24 +150,13 @@ class FileHandler(FileSystemEventHandler):
         self.store = store
         self.general = general
 
-    def on_created(self, event):
+    def _handle_event(self, event, event_type: str) -> None:
         if event.is_directory:
             return
-        handle_file_event(
-            event.src_path,
-            self.compiled_rules,
-            self.store,
-            self.general,
-            "created",
-        )
+        handle_file_event(event.src_path, self.compiled_rules, self.store, self.general, event_type)
+
+    def on_created(self, event):
+        self._handle_event(event, "created")
 
     def on_modified(self, event):
-        if event.is_directory:
-            return
-        handle_file_event(
-            event.src_path,
-            self.compiled_rules,
-            self.store,
-            self.general,
-            "modified",
-        )
+        self._handle_event(event, "modified")
